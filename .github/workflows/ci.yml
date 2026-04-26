@@ -43,6 +43,7 @@ jobs:
 
       - name: Run unit tests
         run: |
+          cd .
           pytest tests/unit/ -v --tb=short
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
@@ -51,6 +52,7 @@ jobs:
 
       - name: Run integration tests
         run: |
+          cd .
           pytest tests/integration/ -v --tb=short
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
