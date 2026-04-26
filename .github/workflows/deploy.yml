@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Docker 이미지 빌드
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ghcr.io/benjleekr/bjay_ecommerce/app:${{ github.sha }} \
+            -t ghcr.io/benjleekr/bjay_ecommerce/app:latest \
+            ./backend
+
+      # 2. GitHub Container Registry 로그인
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. 이미지 Push
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/benjleekr/bjay_ecommerce/app:${{ github.sha }}
+          docker push ghcr.io/benjleekr/bjay_ecommerce/app:latest 
+
+      # 4. 프로덕션 서버에 배포
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/ecommerce
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --force-recreate app
+            docker image prune -f
