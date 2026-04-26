@@ -15,6 +15,7 @@ from app.events.producer import stop_producer
 # AUTO-IMPORT-START
 from app.routers import api_router
 # AUTO-IMPORT-END
+from fastapi import FastAPI, HTTPException, status
 
 # 메인 이벤트 루프 참조 (sync 함수에서 async publish_event 호출 시 사용)
 main_event_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -82,6 +83,15 @@ def create_application() -> FastAPI:
     )
 
     register_exception_handlers(application)
+
+    @application.get("/", include_in_schema=False)
+    async def root_access_block():
+        """루트 경로 접속 시 403 Forbidden 에러를 반환하여 차단한다."""
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access to root is not allowed."
+        )
+
     # AUTO-ROUTER-START
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # AUTO-ROUTER-END
