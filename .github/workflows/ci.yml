@@ -43,8 +43,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          cd .
-          pytest tests/unit/ -v --tb=short
+          PYTHONPATH=. pytest tests/unit/ -v --tb=short
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
           SECRET_KEY: test-secret-key-for-ci
@@ -52,8 +51,7 @@ jobs:
 
       - name: Run integration tests
         run: |
-          cd .
-          pytest tests/integration/ -v --tb=short
+          PYTHONPATH=. pytest tests/integration/ -v --tb=short
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
           SECRET_KEY: test-secret-key-for-ci
