@@ -1,0 +1,9 @@
+{
+  "user_email": "user@myshop.com",
+  "user_status": "active",
+  "user_type": "general",
+  "password_hash": "mypassword",
+  "is_email_verified": true,
+  "last_login_at": "2026-04-24T12:31:46.290Z",
+  "created_by": 0
+}

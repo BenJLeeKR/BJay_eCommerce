@@ -1,0 +1,78 @@
+{
+  "주문_생성_요청": {
+    "설명": "ASUS ROG G14 (16GB) 1대 + SONY WH-1000XM5 (실버) 1개 주문",
+    "endpoint": "POST /api/v1/orders",
+    "headers": {
+      "Content-Type": "application/json",
+      "accept": "application/json"
+    },
+    "body": {
+      "order_number": "ORDER-TEST-FLOW-001",
+      "user_id": 2,
+      "order_status": "PENDING_PAYMENT",
+      "total_product_amount": 2140000.00,
+      "total_discount_amount": 0,
+      "total_shipping_amount": 0,
+      "total_pay_amount": 2140000.00,
+      "items": [
+        {
+          "sku_id": 1,
+          "product_name": "에이수스 ROG 제피러스 G14",
+          "option_summary": "16GB",
+          "quantity": 1,
+          "unit_price_amount": 1690000.00,
+          "total_price_amount": 1690000.00
+        },
+        {
+          "sku_id": 3,
+          "product_name": "소니 WH-1000XM5",
+          "option_summary": "플래티넘 실버",
+          "quantity": 1,
+          "unit_price_amount": 450000.00,
+          "total_price_amount": 450000.00
+        }
+      ]
+    }
+  },
+  "주문_완료_처리": {
+    "설명": "생성된 주문을 COMPLETED 상태로 변경 → PaymentCompleted 이벤트 → 배송 생성",
+    "endpoint": "PUT /api/v1/orders/{order_id}/complete",
+    "headers": {
+      "Content-Type": "application/json",
+      "accept": "application/json"
+    },
+    "body": {}
+  },
+  "배송_생성": {
+    "설명": "결제 완료된 주문에 대한 배송 정보 생성",
+    "endpoint": "POST /api/v1/shipments",
+    "headers": {
+      "Content-Type": "application/json",
+      "accept": "application/json"
+    },
+    "body": {
+      "order_id": 0,
+      "shipment_status": "PENDING",
+      "recipient_name": "테스트 사용자",
+      "recipient_phone": "010-1234-5678",
+      "postal_code": "12345",
+      "address_line1": "서울특별시 강남구 테헤란로 123",
+      "address_line2": "4층",
+      "shipping_fee_amount": 0,
+      "items": [
+        {
+          "order_item_id": 0,
+          "sku_id": 1,
+          "product_name": "에이수스 ROG 제피러스 G14",
+          "quantity": 1
+        },
+        {
+          "order_item_id": 0,
+          "sku_id": 3,
+          "product_name": "소니 WH-1000XM5",
+          "quantity": 1
+        }
+      ]
+    }
+  }
+}
