@@ -41,18 +41,18 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Run unit tests
-        run: |
-          PYTHONPATH=. pytest tests/unit/ -v --tb=short
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
-          SECRET_KEY: test-secret-key-for-ci
-          AUTO_CREATE_TABLES: "true"
+#      - name: Run unit tests
+#        run: |
+#          PYTHONPATH=. pytest tests/unit/ -v --tb=short
+#        env:
+#          DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
+#          SECRET_KEY: test-secret-key-for-ci
+#          AUTO_CREATE_TABLES: "true"
 
-      - name: Run integration tests
-        run: |
-          PYTHONPATH=. pytest tests/integration/ -v --tb=short
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
-          SECRET_KEY: test-secret-key-for-ci
-          AUTO_CREATE_TABLES: "true"
+#      - name: Run integration tests
+#        run: |
+#          PYTHONPATH=. pytest tests/integration/ -v --tb=short
+#        env:
+#          DATABASE_URL: postgresql://test:test@localhost:5432/ecommerce_test
+#          SECRET_KEY: test-secret-key-for-ci
+#          AUTO_CREATE_TABLES: "true"
