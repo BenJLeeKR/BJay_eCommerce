@@ -49,3 +49,8 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --force-recreate app
             docker image prune -f
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
