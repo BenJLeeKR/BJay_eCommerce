@@ -219,3 +219,53 @@ class TestCartAPI:
         assert resp.status_code == 404, f"응답 본문: {resp.text}"
         body = resp.json()
         assert "찾을 수 없습니다" in body["detail"]
+
+
+class TestCartMergeOnLogin:
+    """로그인 시 게스트 장바구니 → 회원 장바구니 병합 동작을 검증한다."""
+
+    _user_id: int | None = None
+    _session_cart_id: int | None = None
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, client: TestClient, api_prefix: str) -> None:
+        """테스트용 회원과 게스트 장바구니를 생성한다."""
+        if TestCartMergeOnLogin._user_id is not None:
+            return
+        # 1. 회원 생성
+        resp = client.post(
+            f"{api_prefix}/users",
+            json={
+                "user_email": "cart_merge_test@example.com",
+                "password_hash": "hashed-pw",
+                "user_status": "ACTIVE",
+                "user_type": "NORMAL",
+            },
+        )
+        assert resp.status_code == 200
+        TestCartMergeOnLogin._user_id = resp.json()["data"]["id"]
+
+        # 2. 게스트 장바구니 생성 (session_id 기반)
+        resp = client.post(
+            f"{api_prefix}/carts",
+            json={
+                "user_id": None,
+                "cart_status": "ACTIVE",
+            },
+        )
+        assert resp.status_code == 201
+        TestCartMergeOnLogin._session_cart_id = resp.json()["data"]["id"]
+
+    def test_login_does_not_fail_without_guest_cart(self, client: TestClient, api_prefix: str) -> None:
+        """게스트 장바구니가 없어도 로그인이 정상 동작해야 한다."""
+        resp = client.post(
+            f"{api_prefix}/auth/login",
+            json={
+                "user_email": "cart_merge_test@example.com",
+                "password_hash": "hashed-pw",
+            },
+        )
+        assert resp.status_code == 200, f"응답 본문: {resp.text}"
+        body = resp.json()
+        assert body["success"] is True
+        assert "access_token" in body["data"]

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from app.core.config import settings
@@ -91,6 +92,15 @@ def create_application() -> FastAPI:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access to root is not allowed."
         )
+
+    # CORS 미들웨어 설정: 프론트엔드(Next.js 등)에서 API를 직접 호출할 수 있도록 허용
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # AUTO-ROUTER-START
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, verify_password
-from app.dependencies import get_db
+from app.crud import cart_crud
+from app.dependencies import get_db, get_session_id
 from app.models.user import UserAccount, UserLoginHistory
 from app.schemas import APIResponse
 from app.schemas.auth import LoginRequest, LoginResponse
@@ -43,9 +44,14 @@ def _record_login_history(
 def login(
     payload: LoginRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> APIResponse[LoginResponse]:
-    """이메일과 비밀번호로 로그인하여 JWT 액세스 토큰을 발급한다."""
+    """이메일과 비밀번호로 로그인하여 JWT 액세스 토큰을 발급한다.
+
+    로그인 성공 시 session_id 기반 비회원 장바구니를
+    회원 장바구니로 자동 병합한다.
+    """
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
 
@@ -90,6 +96,10 @@ def login(
         user_agent=user_agent,
         login_result="SUCCESS",
     )
+
+    # ── 비회원 장바구니 → 회원 장바구니 병합 ──
+    session_id = get_session_id(request, response)
+    cart_crud.merge_guest_cart(db, user_id=user.id, session_id=session_id)
 
     return APIResponse(
         data=LoginResponse(access_token=access_token, token_type="bearer"),

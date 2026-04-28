@@ -691,3 +691,96 @@ class TestUserRoleAssignmentAPI:
             f"/api/v1/users/{self._user_id}/roles/{self._role_id}",
         )
         assert resp.status_code == 404
+
+
+class TestGetMyUser:
+    """GET /users/me 엔드포인트 테스트."""
+
+    _user_id: int | None = None
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, client: TestClient, api_prefix: str) -> None:
+        """테스트용 회원을 생성한다."""
+        if TestGetMyUser._user_id is not None:
+            return
+        resp = client.post(
+            f"{api_prefix}/users",
+            json={
+                "user_email": "me_test@example.com",
+                "password_hash": "hashed-pw",
+                "user_status": "ACTIVE",
+                "user_type": "NORMAL",
+            },
+        )
+        assert resp.status_code == 200
+        TestGetMyUser._user_id = resp.json()["data"]["id"]
+
+    def test_get_my_user_without_auth_returns_401(self, client: TestClient, api_prefix: str) -> None:
+        """인증 없이 /users/me 호출 시 401을 반환해야 한다."""
+        resp = client.get(f"{api_prefix}/users/me")
+        assert resp.status_code == 401
+
+    def test_get_my_user_with_valid_token(self, client: TestClient, api_prefix: str) -> None:
+        """유효한 토큰으로 /users/me 호출 시 회원 정보를 반환해야 한다."""
+        from app.core.security import create_access_token
+
+        token = create_access_token(subject=str(self._user_id))
+        resp = client.get(
+            f"{api_prefix}/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200, f"응답 본문: {resp.text}"
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["id"] == self._user_id
+        assert body["data"]["user_email"] == "me_test@example.com"
+
+    def test_get_my_user_with_invalid_token_returns_401(self, client: TestClient, api_prefix: str) -> None:
+        """유효하지 않은 토큰으로 /users/me 호출 시 401을 반환해야 한다."""
+        resp = client.get(
+            f"{api_prefix}/users/me",
+            headers={"Authorization": "Bearer invalid_token_xxx"},
+        )
+        assert resp.status_code == 401
+
+
+class TestGetMyCoupons:
+    """GET /users/me/coupons 엔드포인트 테스트."""
+
+    _user_id: int | None = None
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, client: TestClient, api_prefix: str) -> None:
+        """테스트용 회원을 생성한다."""
+        if TestGetMyCoupons._user_id is not None:
+            return
+        resp = client.post(
+            f"{api_prefix}/users",
+            json={
+                "user_email": "coupon_test@example.com",
+                "password_hash": "hashed-pw",
+                "user_status": "ACTIVE",
+                "user_type": "NORMAL",
+            },
+        )
+        assert resp.status_code == 200
+        TestGetMyCoupons._user_id = resp.json()["data"]["id"]
+
+    def test_get_my_coupons_without_auth_returns_401(self, client: TestClient, api_prefix: str) -> None:
+        """인증 없이 /users/me/coupons 호출 시 401을 반환해야 한다."""
+        resp = client.get(f"{api_prefix}/users/me/coupons")
+        assert resp.status_code == 401
+
+    def test_get_my_coupons_returns_empty_list(self, client: TestClient, api_prefix: str) -> None:
+        """쿠폰이 없는 회원이 조회 시 빈 목록을 반환해야 한다."""
+        from app.core.security import create_access_token
+
+        token = create_access_token(subject=str(self._user_id))
+        resp = client.get(
+            f"{api_prefix}/users/me/coupons",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200, f"응답 본문: {resp.text}"
+        body = resp.json()
+        assert body["success"] is True
+        assert isinstance(body["data"], list)

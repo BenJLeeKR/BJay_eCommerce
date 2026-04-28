@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 SchemaType = TypeVar("SchemaType")
 
@@ -28,6 +28,22 @@ class APIResponse(ORMBaseSchema, Generic[SchemaType]):
     success: bool = True
     message: str = "요청이 성공했습니다."
     data: Optional[SchemaType] = None
+
+
+class PagedResult(ORMBaseSchema, Generic[SchemaType]):
+    """페이지네이션 응답을 위한 공통 래퍼.
+
+    목록형 API에서 전체 아이템 개수(total_count)를 함께 반환하여
+    프론트엔드가 페이지네이션 UI를 정확히 렌더링할 수 있도록 한다.
+
+    사용 예:
+        APIResponse[PagedResult[ProductRead]]
+    """
+
+    items: list[SchemaType] = Field(default_factory=list, description="현재 페이지의 아이템 목록")
+    total_count: int = Field(default=0, ge=0, description="전체 아이템 개수")
+    skip: int = Field(default=0, ge=0, description="건너뛴 레코드 수")
+    limit: int = Field(default=20, ge=1, description="페이지당 최대 아이템 수")
 
 
 from app.schemas.auth import (
@@ -74,10 +90,18 @@ from app.schemas.admin import (
     AdminAccessLogRead,
 )
 
+from app.schemas.upload import (  # noqa: F401 — Phase 2 placeholder
+    PresignedUrlRequest,
+    PresignedUrlResponse,
+    FileUploadCompleteRequest,
+    FileUploadRead,
+)
+
 __all__ = [
     "APIResponse",
     "ORMBaseSchema",
     "TimestampSchema",
+    "PagedResult",
     "SearchProductIndexRead",
     "SearchProductIndexCreate",
     "SearchProductIndexUpdate",
@@ -115,4 +139,8 @@ __all__ = [
     "AdminAccessLogRead",
     "LoginRequest",
     "LoginResponse",
+    "PresignedUrlRequest",
+    "PresignedUrlResponse",
+    "FileUploadCompleteRequest",
+    "FileUploadRead",
 ]

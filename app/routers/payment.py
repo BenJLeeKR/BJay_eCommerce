@@ -4,12 +4,12 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_db
 from app.models.payment import Payment, PaymentTransaction, PaymentRefund, PaymentLog
-from app.schemas import APIResponse
+from app.schemas import APIResponse, PagedResult
 from app.schemas.payment import PaymentCreate, PaymentRead, PaymentUpdate
 
 router = APIRouter(prefix="/payments", tags=["Payments (결제)"])
@@ -40,24 +40,33 @@ def _get_payment_or_404(db: Session, payment_id: int) -> Payment:
     return payment
 
 
-@router.get("", response_model=APIResponse[list[PaymentRead]], summary="결제 목록 조회")
+@router.get("", response_model=APIResponse[PagedResult[PaymentRead]], summary="결제 목록 조회")
 def list_payments(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=100),
-    payment_status: Optional[str] = Query(default=None, max_length=30),
-    order_id: Optional[int] = Query(default=None, gt=0),
+    skip: int = Query(default=0, ge=0, description="건너뛸 레코드 수"),
+    limit: int = Query(default=20, ge=1, le=100, description="페이지당 최대 아이템 수"),
+    payment_status: Optional[str] = Query(default=None, max_length=30, description="결제 상태 필터"),
+    order_id: Optional[int] = Query(default=None, gt=0, description="주문 ID 필터"),
     db: Session = Depends(get_db),
-) -> APIResponse[list[PaymentRead]]:
+) -> APIResponse[PagedResult[PaymentRead]]:
     """결제 목록을 상태, 주문 ID, 페이징 조건으로 조회한다."""
-    statement = _payment_query().offset(skip).limit(limit)
+    base_query = _payment_query()
 
     if payment_status is not None:
-        statement = statement.where(Payment.payment_status == payment_status)
+        base_query = base_query.where(Payment.payment_status == payment_status)
     if order_id is not None:
-        statement = statement.where(Payment.order_id == order_id)
+        base_query = base_query.where(Payment.order_id == order_id)
 
-    payments = db.execute(statement).scalars().unique().all()
-    return APIResponse(data=payments, message="결제 목록을 조회했습니다.")
+    total_count = db.execute(select(func.count()).select_from(base_query.subquery())).scalar_one()
+    payments = db.execute(base_query.offset(skip).limit(limit)).scalars().unique().all()
+    return APIResponse(
+        data=PagedResult[PaymentRead](
+            items=payments,
+            total_count=total_count,
+            skip=skip,
+            limit=limit,
+        ),
+        message="결제 목록을 조회했습니다.",
+    )
 
 
 @router.get("/{payment_id}", response_model=APIResponse[PaymentRead], summary="결제 상세 조회")

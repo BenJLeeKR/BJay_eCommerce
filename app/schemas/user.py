@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import Field
 
@@ -202,6 +203,25 @@ class UserAccountRead(UserAccountBase, TimestampSchema):
     roles: list[UserRoleRead] = Field(default_factory=list)
 
 
+class UserCouponRead(ORMBaseSchema):
+    """사용자 보유 쿠폰 응답 스키마.
+
+    GET /users/me/coupons 에서 반환된다.
+    """
+
+    coupon_issue_id: int = Field(..., description="쿠폰 발급 ID")
+    coupon_id: int = Field(..., description="쿠폰 ID")
+    coupon_code: str = Field(..., description="쿠폰 코드")
+    promotion_name: Optional[str] = Field(default=None, description="프로모션명")
+    discount_type: str = Field(..., description="할인 유형 (RATE / FIXED)")
+    discount_value: Decimal = Field(..., max_digits=12, decimal_places=2, description="할인 값")
+    max_discount_amount: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=2, description="최대 할인 금액")
+    issued_at: datetime = Field(..., description="발급 시각")
+    expire_at: Optional[datetime] = Field(default=None, description="만료 시각")
+    is_used: bool = Field(default=False, description="사용 여부")
+    is_expired: bool = Field(default=False, description="만료 여부")
+
+
 __all__ = [
     "UserAccountBase",
     "UserAccountCreate",
@@ -220,4 +240,5 @@ __all__ = [
     "UserRoleRead",
     "UserRoleUpdate",
     "UserRoleMapCreate",
+    "UserCouponRead",
 ]

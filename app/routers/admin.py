@@ -1,14 +1,20 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user_entity, require_user_types
 from app.models.admin import AdminAccount, AdminRole, AdminPermission
+from app.models.user import UserAccount
+from app.models.order import OrderHeader
+from app.models.payment import Payment
+from app.models.shipment import Shipment
+from app.models.inventory import Inventory
+from app.models.promotion import Promotion
 from app.schemas import APIResponse
 from app.schemas.admin import (
     AdminAccountCreate,
@@ -16,6 +22,7 @@ from app.schemas.admin import (
     AdminAccountUpdate,
     AdminRoleRead,
     AdminPermissionRead,
+    AdminDashboardStats,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin (관리자)"])
@@ -155,6 +162,106 @@ def list_admin_permissions(
     statement = select(AdminPermission).offset(skip).limit(limit)
     permissions = db.execute(statement).scalars().all()
     return APIResponse(data=permissions, message="권한 목록을 조회했습니다.")
+
+
+@router.get(
+    "/dashboard/stats",
+    response_model=APIResponse[AdminDashboardStats],
+    summary="관리자 대시보드 통계",
+)
+def get_dashboard_stats(
+    _: None = Depends(require_user_types("ADMIN")),
+    db: Session = Depends(get_db),
+) -> APIResponse[AdminDashboardStats]:
+    """관리자 대시보드 위젯 구성을 위한 집계 통계를 반환한다.
+
+    ADMIN 권한이 필요하며, 프론트엔드 대시보드 페이지에서
+    매출 현황, 신규 가입자, 배송 대기, 재고 부족 등의 위젯을
+    렌더링하는 데 사용된다.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 오늘 매출 (결제 완료 금액 합계)
+    today_sales = (
+        db.execute(
+            select(func.coalesce(func.sum(Payment.paid_amount), 0)).where(
+                Payment.approved_at >= today_start,
+                Payment.payment_status == "APPROVED",
+                Payment.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+
+    # 오늘 결제 완료 주문 수
+    today_paid_orders = (
+        db.execute(
+            select(func.count(Payment.id)).where(
+                Payment.approved_at >= today_start,
+                Payment.payment_status == "APPROVED",
+                Payment.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+
+    # 배송 대기 건수
+    pending_shipments = (
+        db.execute(
+            select(func.count(Shipment.id)).where(
+                Shipment.shipment_status == "PENDING",
+                Shipment.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+
+    # 재고 부족 SKU 수 (available_quantity < 5)
+    low_stock_sku_count = (
+        db.execute(
+            select(func.count(Inventory.id)).where(
+                Inventory.available_quantity < 5,
+                Inventory.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+
+    # 오늘 신규 가입자 수
+    new_users_today = (
+        db.execute(
+            select(func.count(UserAccount.id)).where(
+                UserAccount.created_at >= today_start,
+                UserAccount.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+
+    # 진행 중인 프로모션 수
+    active_promotions = (
+        db.execute(
+            select(func.count(Promotion.id)).where(
+                Promotion.is_active.is_(True),
+                Promotion.start_at <= now,
+                Promotion.end_at >= now,
+                Promotion.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+
+    stats = AdminDashboardStats(
+        today_sales_amount=float(today_sales),
+        today_paid_orders=today_paid_orders,
+        pending_shipments=pending_shipments,
+        low_stock_sku_count=low_stock_sku_count,
+        new_users_today=new_users_today,
+        active_promotions=active_promotions,
+    )
+
+    return APIResponse(data=stats, message="관리자 대시보드 통계를 조회했습니다.")
 
 
 __all__ = ["router"]

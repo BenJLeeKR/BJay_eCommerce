@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
 from app.crud import CRUDBase
@@ -175,28 +175,40 @@ class CartCRUD(CRUDBase[Cart]):
         user_id: Optional[int] = None,
         session_id: Optional[str] = None,
         cart_status: Optional[str] = None,
-    ) -> list[Cart]:
-        """장바구니 목록을 관계( items, coupons, option_snapshots )와 함께 조건별로 조회한다."""
+    ) -> tuple[list[Cart], int]:
+        """장바구니 목록을 관계( items, coupons, option_snapshots )와 함께 조건별로 조회한다.
+
+        Returns:
+            (아이템 목록, 전체 개수) 튜플
+        """
+        base_where = [Cart.deleted_at.is_(None)]
+
+        if user_id is not None:
+            base_where.append(Cart.user_id == user_id)
+        if session_id is not None:
+            base_where.append(Cart.session_id == session_id)
+        if cart_status is not None:
+            base_where.append(Cart.cart_status == cart_status)
+
+        # 전체 개수 조회
+        count_stmt = select(func.count()).select_from(Cart).where(*base_where)
+        total_count = db.execute(count_stmt).scalar_one()
+
+        # 목록 조회
         stmt = (
             select(Cart)
             .options(
                 selectinload(Cart.items).selectinload(CartItem.option_snapshots),
                 selectinload(Cart.coupons),
             )
-            .where(Cart.deleted_at.is_(None))
+            .where(*base_where)
             .offset(skip)
             .limit(limit)
             .order_by(Cart.id)
         )
 
-        if user_id is not None:
-            stmt = stmt.where(Cart.user_id == user_id)
-        if session_id is not None:
-            stmt = stmt.where(Cart.session_id == session_id)
-        if cart_status is not None:
-            stmt = stmt.where(Cart.cart_status == cart_status)
-
-        return list(db.execute(stmt).scalars().unique().all())
+        items = list(db.execute(stmt).scalars().unique().all())
+        return items, total_count
 
     def update(
         self,
@@ -456,6 +468,131 @@ class CartCouponCRUD(CRUDBase[CartCoupon]):
         db.delete(db_obj)
         db.commit()
         return db_obj
+
+
+    def merge_guest_cart(
+        self,
+        db: Session,
+        user_id: int,
+        session_id: str,
+    ) -> Optional[Cart]:
+        """비회원(session_id) 장바구니를 회원(user_id) 장바구니로 병합한다.
+
+        로그인 성공 시 호출된다. 병합 정책:
+        1. session_id로 게스트 장바구니 조회
+        2. user_id로 기존 회원 장바구니 조회
+        3. 둘 다 존재하면 SKU 기준으로 아이템 병합 (동일 SKU는 수량 합산)
+        4. 게스트 장바구니의 쿠폰은 유효한 경우에만 회원 장바구니로 이동
+        5. 게스트 장바구니는 병합 완료 후 소프트 삭제
+
+        Returns:
+            병합 결과 활성화된 회원 장바구니. 병합 대상이 없으면 None.
+        """
+        guest_cart = self.get_by_session_id(db, session_id)
+        if guest_cart is None:
+            return None
+
+        # 게스트 장바구니에 user_id가 이미 할당되어 있으면 중복 병합 방지
+        if guest_cart.user_id is not None:
+            return None
+
+        # 회원 장바구니 조회 (ACTIVE 상태)
+        member_cart = None
+        member_carts = self.get_by_user_id(db, user_id, limit=1)
+        if member_carts:
+            member_cart = member_carts[0]
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        if member_cart is None:
+            # 회원 장바구니가 없으면 게스트 장바구니를 회원 것으로 전환
+            guest_cart.user_id = user_id
+            guest_cart.session_id = None
+            guest_cart.updated_at = now
+            db.add(guest_cart)
+            db.commit()
+            db.refresh(guest_cart)
+            return guest_cart
+
+        # 회원 장바구니가 있으면 아이템 병합
+        guest_items = (
+            db.execute(
+                select(CartItem)
+                .options(selectinload(CartItem.option_snapshots))
+                .where(CartItem.cart_id == guest_cart.id, CartItem.deleted_at.is_(None))
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+
+        for guest_item in guest_items:
+            # 동일 SKU 확인
+            existing_item = (
+                db.execute(
+                    select(CartItem).where(
+                        CartItem.cart_id == member_cart.id,
+                        CartItem.sku_id == guest_item.sku_id,
+                        CartItem.deleted_at.is_(None),
+                    )
+                )
+                .scalars()
+                .first()
+            )
+
+            if existing_item is not None:
+                # 동일 SKU: 수량 합산
+                existing_item.quantity += guest_item.quantity
+                existing_item.total_price_amount = (
+                    existing_item.unit_price_amount * existing_item.quantity
+                )
+                existing_item.updated_at = now
+                db.add(existing_item)
+                # 게스트 아이템은 소프트 삭제
+                guest_item.deleted_at = now
+                db.add(guest_item)
+            else:
+                # 새 SKU: 게스트 아이템을 회원 장바구니로 재할당
+                guest_item.cart_id = member_cart.id
+                guest_item.updated_at = now
+                db.add(guest_item)
+
+        # 게스트 장바구니 쿠폰을 회원 장바구니로 이동
+        guest_coupons = (
+            db.execute(
+                select(CartCoupon).where(CartCoupon.cart_id == guest_cart.id)
+            )
+            .scalars()
+            .all()
+        )
+        for coupon in guest_coupons:
+            # 동일 쿠폰이 이미 회원 장바구니에 있는지 확인
+            existing_coupon = (
+                db.execute(
+                    select(CartCoupon).where(
+                        CartCoupon.cart_id == member_cart.id,
+                        CartCoupon.coupon_id == coupon.coupon_id,
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if existing_coupon is None:
+                coupon.cart_id = member_cart.id
+                db.add(coupon)
+            else:
+                db.delete(coupon)
+
+        # 게스트 장바구니 소프트 삭제
+        guest_cart.deleted_at = now
+        guest_cart.updated_at = now
+        db.add(guest_cart)
+
+        member_cart.updated_at = now
+        db.add(member_cart)
+        db.commit()
+        db.refresh(member_cart)
+        return member_cart
 
 
 cart_crud = CartCRUD()

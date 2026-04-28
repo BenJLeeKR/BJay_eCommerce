@@ -211,6 +211,20 @@ class AdminAccessLogCreate(AdminAccessLogBase):
     pass
 
 
+class AdminDashboardStats(ORMBaseSchema):
+    """관리자 대시보드 통계 응답 스키마.
+
+    GET /admin/dashboard/stats 에서 반환된다.
+    """
+
+    today_sales_amount: float = Field(default=0.0, description="오늘 매출 금액")
+    today_paid_orders: int = Field(default=0, description="오늘 결제 완료 주문 수")
+    pending_shipments: int = Field(default=0, description="배송 대기 건수")
+    low_stock_sku_count: int = Field(default=0, description="재고 부족 SKU 수")
+    new_users_today: int = Field(default=0, description="오늘 신규 가입자 수")
+    active_promotions: int = Field(default=0, description="진행 중인 프로모션 수")
+
+
 __all__ = [
     "AdminAccountBase",
     "AdminAccountCreate",
@@ -235,4 +249,5 @@ __all__ = [
     "AdminAccessLogBase",
     "AdminAccessLogCreate",
     "AdminAccessLogRead",
+    "AdminDashboardStats",
 ]

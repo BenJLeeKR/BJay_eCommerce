@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.security import get_password_hash
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user_entity
 from app.models.user import UserAccount, UserAddress, UserProfile, UserRole, UserRoleMap
-from app.schemas import APIResponse
+from app.models.promotion import CouponIssue, Coupon
+from app.schemas import APIResponse, PagedResult
 from app.schemas.user import (
     UserAccountCreate,
     UserAccountRead,
@@ -24,6 +25,7 @@ from app.schemas.user import (
     UserRoleCreate,
     UserRoleRead,
     UserRoleUpdate,
+    UserCouponRead,
 )
 
 router = APIRouter(prefix="/users", tags=["Users (회원)"])
@@ -125,25 +127,102 @@ def _get_role_or_404(db: Session, role_id: int) -> UserRole:
 # ──────────────────────────────────────────────
 
 
-@router.get("", response_model=APIResponse[list[UserAccountRead]], summary="회원 목록 조회")
-def list_users(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=100),
-    user_status: Optional[str] = Query(default=None, max_length=20),
-    user_type: Optional[str] = Query(default=None, max_length=20),
+@router.get("/me", response_model=APIResponse[UserAccountRead], summary="내 회원 정보 조회")
+def get_my_user(
+    current_user: UserAccount = Depends(get_current_user_entity),
+) -> APIResponse[UserAccountRead]:
+    """JWT 토큰의 sub(user_id)를 기반으로 현재 로그인된 본인의 회원 정보를 조회한다.
+
+    프론트엔드에서 user_id를 별도로 관리하지 않고
+    JWT만으로 사용자 정보를 가져올 때 사용한다.
+    """
+    return APIResponse(data=current_user, message="내 회원 정보를 조회했습니다.")
+
+
+@router.get("/me/coupons", response_model=APIResponse[list[UserCouponRead]], summary="내 보유 쿠폰 목록 조회")
+def get_my_coupons(
+    available_only: bool = Query(default=True, description="사용 가능한 쿠폰만 조회"),
+    include_used: bool = Query(default=False, description="사용한 쿠폰 포함"),
+    include_expired: bool = Query(default=False, description="만료된 쿠폰 포함"),
+    current_user: UserAccount = Depends(get_current_user_entity),
     db: Session = Depends(get_db),
-) -> APIResponse[list[UserAccountRead]]:
+) -> APIResponse[list[UserCouponRead]]:
+    """현재 로그인된 사용자가 보유한 쿠폰 목록을 조회한다."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    stmt = (
+        select(CouponIssue)
+        .options(
+            selectinload(CouponIssue.coupon).selectinload(Coupon.promotion),
+        )
+        .where(CouponIssue.user_id == current_user.id)
+        .order_by(CouponIssue.issued_at.desc())
+    )
+
+    issues = db.execute(stmt).scalars().unique().all()
+
+    result: list[UserCouponRead] = []
+    for issue in issues:
+        coupon = issue.coupon
+        promotion = coupon.promotion if coupon else None
+
+        is_used = issue.is_used
+        is_expired = issue.expire_at is not None and issue.expire_at <= now
+
+        if available_only and (is_used or is_expired):
+            continue
+        if not include_used and is_used:
+            continue
+        if not include_expired and is_expired:
+            continue
+
+        result.append(
+            UserCouponRead(
+                coupon_issue_id=issue.id,
+                coupon_id=coupon.id if coupon else 0,
+                coupon_code=coupon.coupon_code if coupon else "",
+                promotion_name=promotion.promotion_name if promotion else None,
+                discount_type=promotion.discount_type if promotion else "",
+                discount_value=promotion.discount_value if promotion else 0,
+                max_discount_amount=promotion.max_discount_amount if promotion else None,
+                issued_at=issue.issued_at,
+                expire_at=issue.expire_at,
+                is_used=is_used,
+                is_expired=is_expired,
+            )
+        )
+
+    return APIResponse(data=result, message="내 보유 쿠폰 목록을 조회했습니다.")
+
+
+@router.get("", response_model=APIResponse[PagedResult[UserAccountRead]], summary="회원 목록 조회")
+def list_users(
+    skip: int = Query(default=0, ge=0, description="건너뛸 레코드 수"),
+    limit: int = Query(default=20, ge=1, le=100, description="페이지당 최대 아이템 수"),
+    user_status: Optional[str] = Query(default=None, max_length=20, description="회원 상태 필터"),
+    user_type: Optional[str] = Query(default=None, max_length=20, description="회원 유형 필터"),
+    db: Session = Depends(get_db),
+) -> APIResponse[PagedResult[UserAccountRead]]:
     """회원 목록을 조건과 페이징 기준으로 조회한다."""
-    statement = _user_query().offset(skip).limit(limit)
+    base_query = _user_query()
 
     if user_status is not None:
-        statement = statement.where(UserAccount.user_status == user_status)
+        base_query = base_query.where(UserAccount.user_status == user_status)
 
     if user_type is not None:
-        statement = statement.where(UserAccount.user_type == user_type)
+        base_query = base_query.where(UserAccount.user_type == user_type)
 
-    users = db.execute(statement).scalars().unique().all()
-    return APIResponse(data=users, message="회원 목록을 조회했습니다.")
+    total_count = db.execute(select(func.count()).select_from(base_query.subquery())).scalar_one()
+    users = db.execute(base_query.offset(skip).limit(limit)).scalars().unique().all()
+    return APIResponse(
+        data=PagedResult[UserAccountRead](
+            items=users,
+            total_count=total_count,
+            skip=skip,
+            limit=limit,
+        ),
+        message="회원 목록을 조회했습니다.",
+    )
 
 
 @router.get("/{user_id}", response_model=APIResponse[UserAccountRead], summary="회원 상세 조회")

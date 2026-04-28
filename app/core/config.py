@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     AUTO_CREATE_TABLES: bool = False
 
+    # CORS: 프론트엔드에서 API를 직접 호출할 수 있도록 허용할 Origin 목록
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",       # Next.js 개발 서버
+        "http://localhost:3001",       # 추가 개발 서버
+        "http://127.0.0.1:3000",      # IP로 접속하는 경우
+        "http://127.0.0.1:3001",
+    ]
+
     DB_SCHEMA: str = "ecommerce"
     POSTGRES_SERVER: str = "postgres"
     POSTGRES_PORT: int = 5432

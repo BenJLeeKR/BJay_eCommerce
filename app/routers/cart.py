@@ -17,7 +17,7 @@ from app.dependencies import get_db, get_session_id
 from app.models.cart import CartItem
 from app.models.inventory import Inventory
 from app.models.product import SKU
-from app.schemas import APIResponse
+from app.schemas import APIResponse, PagedResult
 from app.schemas.cart import (
     CartCreate,
     CartRead,
@@ -93,22 +93,22 @@ def _get_cart_item_or_404(db: Session, cart_item_id: int) -> CartItem:
     return cart_item
 
 
-@router.get("/carts", response_model=APIResponse[list[CartRead]], summary="장바구니 목록 조회")
+@router.get("/carts", response_model=APIResponse[PagedResult[CartRead]], summary="장바구니 목록 조회")
 def list_carts(
     request: Request,
     response: Response,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=100),
-    user_id: Optional[int] = Query(default=None),
-    cart_status: Optional[str] = Query(default=None, max_length=20),
+    skip: int = Query(default=0, ge=0, description="건너뛸 레코드 수"),
+    limit: int = Query(default=20, ge=1, le=100, description="페이지당 최대 아이템 수"),
+    user_id: Optional[int] = Query(default=None, description="회원 ID 필터"),
+    cart_status: Optional[str] = Query(default=None, max_length=20, description="장바구니 상태 필터"),
     db: Session = Depends(get_db),
-) -> APIResponse[list[CartRead]]:
+) -> APIResponse[PagedResult[CartRead]]:
     """장바구니 목록을 사용자/세션/상태 조건으로 조회한다."""
     session_id: Optional[str] = None
     if user_id is None:
         session_id = get_session_id(request, response)
 
-    carts = cart_crud.get_multi_with_relations(
+    carts, total_count = cart_crud.get_multi_with_relations(
         db,
         skip=skip,
         limit=limit,
@@ -117,7 +117,15 @@ def list_carts(
         cart_status=cart_status,
     )
 
-    return APIResponse(data=carts, message="장바구니 목록을 조회했습니다.")
+    return APIResponse(
+        data=PagedResult[CartRead](
+            items=carts,
+            total_count=total_count,
+            skip=skip,
+            limit=limit,
+        ),
+        message="장바구니 목록을 조회했습니다.",
+    )
 
 
 @router.get("/carts/{cart_id}", response_model=APIResponse[CartRead], summary="장바구니 상세 조회")
