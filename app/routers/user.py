@@ -240,6 +240,16 @@ def get_user(user_id: int, db: Session = Depends(get_db)) -> APIResponse[UserAcc
 )
 def create_user(payload: UserAccountCreate, db: Session = Depends(get_db)) -> APIResponse[UserAccountRead]:
     """회원 계정 기본 정보를 생성한다."""
+    # 중복 이메일 체크
+    existing = db.execute(
+        select(UserAccount).where(UserAccount.user_email == payload.user_email)
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 가입된 이메일입니다.",
+        )
+
     hashed_password = get_password_hash(payload.password_hash) if payload.password_hash else None
     user = UserAccount(
         user_email=payload.user_email,
