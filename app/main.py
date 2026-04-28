@@ -106,8 +106,10 @@ def create_application() -> FastAPI:
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # AUTO-ROUTER-END
 
-    # OpenAPI 보안 스키마 설정 (HTTP Bearer)
-    # Swagger UI의 Authorize 버튼을 통해 JWT 토큰을 입력할 수 있도록 함
+    # OpenAPI 보안 스키마 설정 (OAuth2 Password Flow)
+    # Swagger UI의 Authorize 버튼에서 이메일(username)과 비밀번호를 직접 입력하면
+    # 자동으로 /api/v1/auth/token을 호출하여 JWT를 발급받고,
+    # 이후 모든 요청에 Authorization: Bearer <token> 헤더를 자동 포함시킨다.
     _original_openapi = application.openapi
 
     def _custom_openapi() -> dict[str, Any]:
@@ -116,14 +118,21 @@ def create_application() -> FastAPI:
         openapi_schema = _original_openapi()
         openapi_schema.setdefault("components", {})
         openapi_schema["components"]["securitySchemes"] = {
-            "BearerAuth": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-                "description": "발급받은 JWT access_token을 입력합니다. (예: eyJhbGciOiJIUzI1NiIs...)",
+            "OAuth2PasswordBearer": {
+                "type": "oauth2",
+                "flows": {
+                    "password": {
+                        "tokenUrl": f"{settings.API_V1_PREFIX}/auth/token",
+                        "scopes": {},
+                    }
+                },
+                "description": (
+                    "Swagger Authorize에 이메일(username)과 비밀번호를 입력하면 "
+                    "자동으로 /api/v1/auth/token을 호출하여 JWT를 발급받습니다."
+                ),
             }
         }
-        openapi_schema["security"] = [{"BearerAuth": []}]
+        openapi_schema["security"] = [{"OAuth2PasswordBearer": []}]
         application.openapi_schema = openapi_schema
         return application.openapi_schema
 
