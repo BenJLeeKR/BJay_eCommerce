@@ -4,17 +4,21 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request, Response, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import decode_access_token
 from app.database import get_db_session
 from app.models.user import UserAccount
 
 logger = logging.getLogger(__name__)
 
-bearer_scheme = HTTPBearer(auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_PREFIX}/auth/token",
+    auto_error=False,
+)
 
 SESSION_ID_COOKIE_KEY = "session_id"
 SESSION_ID_MAX_AGE = 60 * 60 * 24 * 30  # 30일
@@ -26,11 +30,11 @@ def get_db() -> Session:
 
 
 def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
     _: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """JWT 토큰을 검증하고 최소 사용자 컨텍스트를 반환한다."""
-    if credentials is None:
+    if token is None:
         logger.warning(
             "[get_current_user] Authorization 헤더가 없음. "
             "Swagger Authorize가 제대로 설정되었는지 확인 필요."
@@ -42,11 +46,11 @@ def get_current_user(
 
     logger.debug(
         "[get_current_user] Authorization 헤더 수신: Bearer %s... (len=%d)",
-        credentials.credentials[:20] if len(credentials.credentials) > 20 else credentials.credentials,
-        len(credentials.credentials),
+        token[:20] if len(token) > 20 else token,
+        len(token),
     )
 
-    payload = decode_access_token(credentials.credentials)
+    payload = decode_access_token(token)
     subject = payload.get("sub")
 
     if subject is None:
@@ -59,7 +63,7 @@ def get_current_user(
 
 
 def get_current_user_entity(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> UserAccount:
     """JWT 토큰의 sub(user_id)로 실제 UserAccount 엔티티를 조회한다.
@@ -67,7 +71,7 @@ def get_current_user_entity(
     프론트엔드가 user_id를 별도 관리하지 않고 JWT만으로
     현재 로그인된 사용자의 전체 정보가 필요할 때 사용한다.
     """
-    if credentials is None:
+    if token is None:
         logger.warning(
             "[get_current_user_entity] Authorization 헤더가 없음. "
             "Swagger Authorize가 제대로 설정되었는지 확인 필요."
@@ -79,11 +83,11 @@ def get_current_user_entity(
 
     logger.debug(
         "[get_current_user_entity] Authorization 헤더 수신: Bearer %s... (len=%d)",
-        credentials.credentials[:20] if len(credentials.credentials) > 20 else credentials.credentials,
-        len(credentials.credentials),
+        token[:20] if len(token) > 20 else token,
+        len(token),
     )
 
-    payload = decode_access_token(credentials.credentials)
+    payload = decode_access_token(token)
     subject = payload.get("sub")
 
     if subject is None:

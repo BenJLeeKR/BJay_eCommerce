@@ -2,11 +2,10 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.utils import get_openapi
 
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
@@ -106,37 +105,8 @@ def create_application() -> FastAPI:
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # AUTO-ROUTER-END
 
-    # OpenAPI 보안 스키마 설정 (OAuth2 Password Flow)
-    # Swagger UI의 Authorize 버튼에서 이메일(username)과 비밀번호를 직접 입력하면
-    # 자동으로 /api/v1/auth/token을 호출하여 JWT를 발급받고,
-    # 이후 모든 요청에 Authorization: Bearer <token> 헤더를 자동 포함시킨다.
-    _original_openapi = application.openapi
-
-    def _custom_openapi() -> dict[str, Any]:
-        if application.openapi_schema:
-            return application.openapi_schema
-        openapi_schema = _original_openapi()
-        openapi_schema.setdefault("components", {})
-        openapi_schema["components"]["securitySchemes"] = {
-            "OAuth2PasswordBearer": {
-                "type": "oauth2",
-                "flows": {
-                    "password": {
-                        "tokenUrl": f"{settings.API_V1_PREFIX}/auth/token",
-                        "scopes": {},
-                    }
-                },
-                "description": (
-                    "Swagger Authorize에 이메일(username)과 비밀번호를 입력하면 "
-                    "자동으로 /api/v1/auth/token을 호출하여 JWT를 발급받습니다."
-                ),
-            }
-        }
-        openapi_schema["security"] = [{"OAuth2PasswordBearer": []}]
-        application.openapi_schema = openapi_schema
-        return application.openapi_schema
-
-    application.openapi = _custom_openapi
+    # OpenAPI 보안 스키마는 dependencies.py의 OAuth2PasswordBearer가 자동 생성
+    # (별도 커스텀 openapi 함수 불필요)
 
     return application
 
