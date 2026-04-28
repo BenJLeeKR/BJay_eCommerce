@@ -28,7 +28,7 @@ _handler.setFormatter(logging.Formatter(_log_format, datefmt="%Y-%m-%d %H:%M:%S"
 
 # app 패키지 로거에만 핸들러 추가 (루트 로거는 건드리지 않음)
 _app_logger = logging.getLogger("app")
-_app_logger.setLevel(logging.INFO)
+_app_logger.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
 _app_logger.addHandler(_handler)
 _app_logger.propagate = False
 
@@ -106,29 +106,14 @@ def create_application() -> FastAPI:
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # AUTO-ROUTER-END
 
-    _configure_openapi_security_scheme(application)
+    # OpenAPI 보안 스키마 설정 (HTTP Bearer)
+    # Swagger UI의 Authorize 버튼을 통해 JWT 토큰을 입력할 수 있도록 함
+    _original_openapi = application.openapi
 
-    return application
-
-
-def _configure_openapi_security_scheme(application: FastAPI) -> None:
-    """OpenAPI 스키마에 HTTP Bearer 보안 스키마를 추가하여
-    Swagger UI에 'Authorize' 버튼이 나타나고,
-    JWT 토큰을 직접 입력하여 인증할 수 있도록 설정한다.
-
-    NOTE: HTTPBearer 타입을 사용하므로 Swagger UI의 Authorize 버튼을 통해
-    발급받은 JWT 토큰(access_token)을 직접 입력해야 한다.
-    (OAuth2 password flow가 아닌, 이미 발급된 토큰을 Bearer 헤더로 전송)
-    """
-
-    def custom_openapi() -> dict[str, Any]:
+    def _custom_openapi() -> dict[str, Any]:
         if application.openapi_schema:
             return application.openapi_schema
-        openapi_schema = get_openapi(
-            title=settings.PROJECT_NAME,
-            version=settings.APP_VERSION,
-            routes=application.routes,
-        )
+        openapi_schema = _original_openapi()
         openapi_schema.setdefault("components", {})
         openapi_schema["components"]["securitySchemes"] = {
             "BearerAuth": {
@@ -142,7 +127,9 @@ def _configure_openapi_security_scheme(application: FastAPI) -> None:
         application.openapi_schema = openapi_schema
         return application.openapi_schema
 
-    application.openapi = custom_openapi
+    application.openapi = _custom_openapi
+
+    return application
 
 
 app = create_application()
