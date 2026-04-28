@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
 
 from app.dependencies import get_current_user, get_current_user_entity, get_db, require_user_types
 
@@ -43,18 +42,14 @@ class TestGetCurrentUser:
             return_value=mock_payload,
         )
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="valid_token",
-        )
-        result = get_current_user(credentials=credentials)
+        result = get_current_user(token="valid_token")
         assert result == mock_payload
         assert result["sub"] == "user_1"
 
-    def test_missing_credentials_raises_401(self):
+    def test_missing_token_raises_401(self):
         """인증 정보가 없으면 401 예외가 발생해야 한다."""
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(credentials=None)
+            get_current_user(token=None)
         assert exc_info.value.status_code == 401
         assert "인증 정보가 필요합니다." in exc_info.value.detail
 
@@ -65,12 +60,8 @@ class TestGetCurrentUser:
             return_value={"exp": 9999999999},  # sub 없음
         )
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="token_no_subject",
-        )
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(credentials=credentials)
+            get_current_user(token="token_no_subject")
         assert exc_info.value.status_code == 401
         assert "유효하지 않은 토큰입니다." in exc_info.value.detail
 
@@ -81,12 +72,8 @@ class TestGetCurrentUser:
             return_value={"sub": None, "exp": 9999999999},
         )
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="token_none_sub",
-        )
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(credentials=credentials)
+            get_current_user(token="token_none_sub")
         assert exc_info.value.status_code == 401
         assert "유효하지 않은 토큰입니다." in exc_info.value.detail
 
@@ -100,26 +87,18 @@ class TestGetCurrentUser:
             ),
         )
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="invalid_token",
-        )
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(credentials=credentials)
+            get_current_user(token="invalid_token")
         assert exc_info.value.status_code == 401
 
-    def test_decode_access_token_called_with_credentials(self, mocker):
-        """decode_access_token이 credentials 문자열로 호출되어야 한다."""
+    def test_decode_access_token_called_with_token(self, mocker):
+        """decode_access_token이 토큰 문자열로 호출되어야 한다."""
         mock_decode = mocker.patch(
             "app.dependencies.decode_access_token",
             return_value={"sub": "test_user"},
         )
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="my_token_value",
-        )
-        get_current_user(credentials=credentials)
+        get_current_user(token="my_token_value")
         mock_decode.assert_called_once_with("my_token_value")
 
     def test_returns_additional_claims(self, mocker):
@@ -135,11 +114,7 @@ class TestGetCurrentUser:
             return_value=mock_payload,
         )
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="admin_token",
-        )
-        result = get_current_user(credentials=credentials)
+        result = get_current_user(token="admin_token")
         assert result["role"] == "admin"
         assert "write" in result["permissions"]
 
@@ -154,13 +129,9 @@ class TestGetCurrentUserEntity:
         mock_user.user_type = "NORMAL"
         mock_user.user_email = "test@example.com"
 
-        mock_credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="valid_token",
-        )
         mocker.patch(
-            "app.dependencies.get_current_user",
-            return_value={"sub": "user_1"},
+            "app.dependencies.decode_access_token",
+            return_value={"sub": "1"},
         )
         mock_execute = MagicMock()
         mock_scalar = MagicMock()
@@ -170,7 +141,7 @@ class TestGetCurrentUserEntity:
         mock_db.execute = mock_execute
 
         result = get_current_user_entity(
-            credentials=mock_credentials,
+            token="valid_token",
             db=mock_db,
         )
         assert result is mock_user
@@ -178,13 +149,9 @@ class TestGetCurrentUserEntity:
 
     def test_nonexistent_user_raises_401(self, mocker):
         """존재하지 않는 user_id면 401 예외가 발생해야 한다."""
-        mock_credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="valid_token",
-        )
         mocker.patch(
-            "app.dependencies.get_current_user",
-            return_value={"sub": "user_999"},
+            "app.dependencies.decode_access_token",
+            return_value={"sub": "999"},
         )
         mock_execute = MagicMock()
         mock_scalar = MagicMock()
@@ -195,7 +162,7 @@ class TestGetCurrentUserEntity:
 
         with pytest.raises(HTTPException) as exc_info:
             get_current_user_entity(
-                credentials=mock_credentials,
+                token="valid_token",
                 db=mock_db,
             )
         assert exc_info.value.status_code == 401

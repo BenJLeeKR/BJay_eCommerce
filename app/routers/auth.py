@@ -114,6 +114,7 @@ def login(
 def token_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     request: Request = None,  # type: ignore[assignment]
+    response: Response = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     """Swagger UI의 Authorize 버튼에서 OAuth2 password flow로 호출하는
@@ -162,5 +163,10 @@ def token_login(
         user_agent=user_agent,
         login_result="SUCCESS",
     )
+
+    # ── 비회원 장바구니 → 회원 장바구니 병합 ──
+    if request and response:
+        session_id = get_session_id(request, response)
+        cart_crud.merge_guest_cart(db, user_id=user.id, session_id=session_id)
 
     return {"access_token": access_token, "token_type": "bearer"}

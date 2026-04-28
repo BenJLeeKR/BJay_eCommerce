@@ -743,6 +743,33 @@ class TestGetMyUser:
         )
         assert resp.status_code == 401
 
+    def test_token_login_success(self, client: TestClient, api_prefix: str) -> None:
+        """POST /auth/token (Swagger Authorize)가 정상 동작해야 한다."""
+        resp = client.post(
+            f"{api_prefix}/auth/token",
+            data={"username": "me_test@example.com", "password": "hashed-pw"},
+        )
+        assert resp.status_code == 200, f"응답 본문: {resp.text}"
+        body = resp.json()
+        assert "access_token" in body
+        assert body["token_type"] == "bearer"
+
+    def test_token_login_invalid_credentials(self, client: TestClient, api_prefix: str) -> None:
+        """잘못된 자격증명으로 /auth/token 호출 시 401을 반환해야 한다."""
+        resp = client.post(
+            f"{api_prefix}/auth/token",
+            data={"username": "me_test@example.com", "password": "wrong_password"},
+        )
+        assert resp.status_code == 401
+
+    def test_token_login_nonexistent_user(self, client: TestClient, api_prefix: str) -> None:
+        """존재하지 않는 사용자로 /auth/token 호출 시 401을 반환해야 한다."""
+        resp = client.post(
+            f"{api_prefix}/auth/token",
+            data={"username": "nonexistent@example.com", "password": "some_password"},
+        )
+        assert resp.status_code == 401
+
 
 class TestGetMyCoupons:
     """GET /users/me/coupons 엔드포인트 테스트."""
