@@ -112,9 +112,14 @@ def create_application() -> FastAPI:
 
 
 def _configure_openapi_security_scheme(application: FastAPI) -> None:
-    """OpenAPI 스키마에 OAuth2 password flow 보안 스키마를 추가하여
+    """OpenAPI 스키마에 HTTP Bearer 보안 스키마를 추가하여
     Swagger UI에 'Authorize' 버튼이 나타나고,
-    user_email/password로 직접 로그인할 수 있도록 설정한다."""
+    JWT 토큰을 직접 입력하여 인증할 수 있도록 설정한다.
+
+    NOTE: HTTPBearer 타입을 사용하므로 Swagger UI의 Authorize 버튼을 통해
+    발급받은 JWT 토큰(access_token)을 직접 입력해야 한다.
+    (OAuth2 password flow가 아닌, 이미 발급된 토큰을 Bearer 헤더로 전송)
+    """
 
     def custom_openapi() -> dict[str, Any]:
         if application.openapi_schema:
@@ -127,13 +132,10 @@ def _configure_openapi_security_scheme(application: FastAPI) -> None:
         openapi_schema.setdefault("components", {})
         openapi_schema["components"]["securitySchemes"] = {
             "BearerAuth": {
-                "type": "oauth2",
-                "flows": {
-                    "password": {
-                        "tokenUrl": f"{settings.API_V1_PREFIX}/auth/token",
-                    }
-                },
-                "description": "user_email과 password를 입력하여 로그인합니다. (user_email 필드에 이메일 입력)",
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "발급받은 JWT access_token을 입력합니다. (예: eyJhbGciOiJIUzI1NiIs...)",
             }
         }
         openapi_schema["security"] = [{"BearerAuth": []}]
