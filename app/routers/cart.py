@@ -298,7 +298,7 @@ def add_cart_item(
         soft_deleted_item.total_price_amount = payload.total_price_amount
         soft_deleted_item.updated_at = datetime.now(timezone.utc)
         db.commit()
-        db.refresh(soft_deleted_item)
+        # refresh() 대신 _get_cart_item_or_404()가 DB에서 새로 조회
         loaded_item = _get_cart_item_or_404(db, soft_deleted_item.id)
         _enrich_cart_items_with_product_info(db, [loaded_item])
         return APIResponse(data=loaded_item, message="장바구니에 상품을 추가했습니다.")
