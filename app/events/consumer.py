@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
+import socket
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Optional
 
@@ -754,16 +756,17 @@ async def consume_loop() -> None:
     Kafka를 사용할 수 없는 환경(테스트, 개발)에서는 자동으로 비활성화된다.
 
     Kafka 브로커가 아직 준비되지 않은 경우(타이밍 이슈)를 대비해,
-    연결 실패 시 백그라운드에서 주기적으로 재연결을 시도한다.
+    백그라운드에서 지수 백오프(exponential backoff) 방식으로 재연결을 시도한다.
     """
     # Kafka bootstrap 서버가 설정되지 않은 경우 건너뛴다
     if not settings.KAFKA_BOOTSTRAP_SERVERS:
         logger.info("KAFKA_BOOTSTRAP_SERVERS not set, Kafka consumer disabled")
         return
 
-    # 초기 재시도 설정 (빠른 재시도)
+    # 지수 백오프 재시도 설정
     initial_retries = 5
-    initial_delay = 3  # 초
+    base_delay = 3       # 초 (기본 지연)
+    max_delay = 60       # 최대 지연 (초)
 
     # 연결 성공 후 메시지 소비 루프
     consumer: Optional[AIOKafkaConsumer] = None
@@ -787,6 +790,19 @@ async def consume_loop() -> None:
                         session_timeout_ms=15000,
                     )
                     try:
+                        # DNS 사전 체크: 호스트네임이 해석 가능한지 먼저 확인
+                        broker_host = settings.KAFKA_BOOTSTRAP_SERVERS.split(",")[0].split(":")[0]
+                        try:
+                            socket.getaddrinfo(broker_host, None)
+                        except socket.gaierror as dns_exc:
+                            logger.warning(
+                                "DNS resolution failed for %s (attempt %d/%d): %s",
+                                broker_host, attempt, initial_retries, dns_exc,
+                            )
+                            raise ConnectionError(
+                                f"DNS resolution failed for {broker_host}: {dns_exc}"
+                            ) from dns_exc
+
                         await consumer.start()
                         logger.info(
                             "Kafka consumer started: topics=%s group=%s",
@@ -806,25 +822,40 @@ async def consume_loop() -> None:
                         consumer = None
                         raise  # 상위 try/finally로 전파
                     except Exception as exc:
+                        # 지수 백오프 + jitter 계산
+                        delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                        jitter = random.uniform(0, delay * 0.1)
+                        total_delay = delay + jitter
+
                         logger.warning(
-                            "Kafka consumer start failed (attempt %d/%d): %s",
+                            "Kafka consumer start failed (attempt %d/%d): %s, "
+                            "retrying in %.1fs (backoff: %.1f + jitter: %.1f)",
                             attempt,
                             initial_retries,
                             exc,
+                            total_delay,
+                            delay,
+                            jitter,
                         )
                         if consumer is not None:
                             _consumers_to_cleanup.append(consumer)
                             await consumer.stop()
                         consumer = None
                         if attempt < initial_retries:
-                            await asyncio.sleep(initial_delay)
+                            await asyncio.sleep(total_delay)
                         else:
+                            # 5회 모두 실패 → 더 긴 지수 백오프로 재시도
+                            long_delay = min(base_delay * (2 ** initial_retries), max_delay)
+                            long_jitter = random.uniform(0, long_delay * 0.1)
                             logger.error(
                                 "Kafka consumer could not start after %d attempts, "
-                                "will retry in 30 seconds",
+                                "will retry in %.1fs (backoff: %.1f + jitter: %.1f)",
                                 initial_retries,
+                                long_delay + long_jitter,
+                                long_delay,
+                                long_jitter,
                             )
-                            await asyncio.sleep(30)
+                            await asyncio.sleep(long_delay + long_jitter)
                             # while 루프로 돌아가 재시도
                             continue
 
