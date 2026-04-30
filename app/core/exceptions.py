@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.core.config import settings
+
 
 class ApplicationException(Exception):
     """애플리케이션 전역에서 사용하는 공통 예외 클래스."""
@@ -18,29 +20,48 @@ class ResourceNotFoundException(ApplicationException):
         super().__init__(message=message, status_code=status.HTTP_404_NOT_FOUND)
 
 
+def _add_cors_headers(response: JSONResponse, request: Request) -> JSONResponse:
+    """JSONResponse에 CORS 헤더를 추가한다.
+
+    FastAPI의 CORSMiddleware는 예외 핸들러가 반환한 응답에 대해
+    CORS 헤더를 추가하지 않는 경우가 있으므로, 예외 핸들러에서 직접 추가한다.
+    """
+    origin = request.headers.get("origin")
+    if origin:
+        allowed_origins = settings.BACKEND_CORS_ORIGINS
+        if "*" in allowed_origins or origin in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+            response.headers["Access-Control-Allow-Headers"] = "content-type,authorization"
+    return response
+
+
 async def application_exception_handler(
-    _: Request,
+    request: Request,
     exc: ApplicationException,
 ) -> JSONResponse:
     """커스텀 애플리케이션 예외를 표준 JSON 응답으로 변환한다."""
-    return JSONResponse(
+    response = JSONResponse(
         status_code=exc.status_code,
         content={
             "detail": exc.message,
             "error_type": exc.__class__.__name__,
         },
     )
+    return _add_cors_headers(response, request)
 
 
-async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """처리되지 않은 예외를 공통 포맷으로 응답한다."""
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "detail": "서버 내부 오류가 발생했습니다.",
             "error_type": exc.__class__.__name__,
         },
     )
+    return _add_cors_headers(response, request)
 
 
 def register_exception_handlers(application: FastAPI) -> None:

@@ -267,6 +267,13 @@ def add_cart_item(
     """장바구니에 상품을 추가한다."""
     cart = _get_cart_or_404(db, cart_id)
 
+    # 장바구니 상태 검증: ACTIVE 상태에서만 상품 추가 가능
+    if cart.cart_status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"이미 처리된 장바구니입니다. (status: {cart.cart_status})",
+        )
+
     # 중복 SKU 검사
     existing = cart_item_crud.get_by_cart_and_sku(db, cart_id, payload.sku_id)
     if existing:
