@@ -77,6 +77,7 @@ from app.models.admin import (
     AdminActionLog,
     AdminAccessLog,
 )
+from app.models.enum_meta import MetaEnum
 
 __all__ = [
     "Base",
@@ -141,4 +142,5 @@ __all__ = [
     "AdminMenu",
     "AdminActionLog",
     "AdminAccessLog",
+    "MetaEnum",
 ]

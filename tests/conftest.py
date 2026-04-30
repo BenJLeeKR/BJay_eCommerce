@@ -82,13 +82,16 @@ def client(app: FastAPI) -> Generator[TestClient, None, None]:
 # ---------------------------------------------------------------
 @pytest.fixture(scope="session", autouse=True)
 def setup_database() -> Generator[None, None, None]:
-    """테스트 세션 시작 시 ecommerce 스키마 아래 모든 테이블을 생성한다."""
+    """테스트 세션 시작 시 ecommerce/meta 스키마 아래 모든 테이블을 생성한다."""
     with test_engine.connect() as conn:
         conn.execute(
             text(f"CREATE SCHEMA IF NOT EXISTS {settings.DB_SCHEMA}")
         )
         conn.execute(
-            text(f"SET search_path TO {settings.DB_SCHEMA}, public")
+            text("CREATE SCHEMA IF NOT EXISTS meta")
+        )
+        conn.execute(
+            text(f"SET search_path TO {settings.DB_SCHEMA}, meta, public")
         )
         conn.commit()
 

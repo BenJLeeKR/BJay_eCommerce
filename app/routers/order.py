@@ -308,20 +308,20 @@ def complete_order(
 
     order = _get_order_or_404(db, order_id)
 
-    if not OrderStatus.is_valid_transition(order.order_status, OrderStatus.COMPLETE):
+    if not OrderStatus.is_valid_transition(order.order_status, OrderStatus.COMPLETED):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"주문 상태({order.order_status})에서 COMPLETE로 변경할 수 없습니다.",
+            detail=f"주문 상태({order.order_status})에서 COMPLETED로 변경할 수 없습니다.",
         )
 
     old_status = order.order_status
-    order.order_status = OrderStatus.COMPLETE
+    order.order_status = OrderStatus.COMPLETED
     order.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.add(order)
 
     status_history = OrderStatusHistory(
         order_id=order.id,
-        order_status=OrderStatus.COMPLETE,
+        order_status=OrderStatus.COMPLETED,
         changed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         change_reason="구매 확정",
     )
@@ -331,7 +331,7 @@ def complete_order(
     db.refresh(order)
 
     completed_order = _get_order_or_404(db, order.id)
-    logger.info("Order %s status changed: %s -> %s", order.id, old_status, OrderStatus.COMPLETE)
+    logger.info("Order %s status changed: %s -> %s", order.id, old_status, OrderStatus.COMPLETED)
     return APIResponse(data=completed_order, message="구매가 확정되었습니다.")
 
 

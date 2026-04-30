@@ -371,7 +371,7 @@ async def handle_inventory_updated(message_value: dict[str, Any]) -> None:
 
         # === 1. Order 상태를 PAYMENT_PENDING으로 변경 (첫 번째 SKU 처리 시에만) ===
         order = db.query(OrderHeader).filter(OrderHeader.id == event.order_id).first()
-        if order and order.order_status == OrderStatus.PENDING:
+        if order and order.order_status == OrderStatus.CREATED:
             _update_order_status(
                 db,
                 event.order_id,
@@ -379,7 +379,7 @@ async def handle_inventory_updated(message_value: dict[str, Any]) -> None:
                 change_reason="재고 확인 완료, 결제 진행",
             )
             logger.info(
-                "[Kafka]   Order %s status: PENDING → PAYMENT_PENDING",
+                "[Kafka]   Order %s status: CREATED → PAYMENT_PENDING",
                 event.order_id,
             )
 
@@ -392,7 +392,7 @@ async def handle_inventory_updated(message_value: dict[str, Any]) -> None:
         if existing_payments == 0:
             payment = Payment(
                 order_id=event.order_id,
-                payment_status=PaymentStatus.PROCESSING,
+                payment_status=PaymentStatus.READY,
                 payment_amount=order.total_pay_amount if order else 0,
                 paid_amount=0,
                 currency_code="KRW",
@@ -570,7 +570,7 @@ async def handle_payment_completed(message_value: dict[str, Any]) -> None:
 
         shipment = Shipment(
             order_id=event.order_id,
-            shipment_status=ShipmentStatus.PENDING,
+            shipment_status=ShipmentStatus.READY,
             total_shipping_amount=order.total_shipping_amount,
             warehouse_id=warehouse.id if warehouse else None,
         )
@@ -599,7 +599,7 @@ async def handle_payment_completed(message_value: dict[str, Any]) -> None:
         # === 4. ShipmentStatusHistory 기록 ===
         status_history = ShipmentStatusHistory(
             shipment_id=shipment.id,
-            shipment_status=ShipmentStatus.PENDING,
+            shipment_status=ShipmentStatus.READY,
         )
         db.add(status_history)
         db.commit()

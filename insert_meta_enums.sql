@@ -39,9 +39,13 @@ INSERT INTO meta.meta_enum (enum_type, enum_value, description) VALUES
 INSERT INTO meta.meta_enum (enum_type, enum_value, description) VALUES
 ('order_status', 'CREATED', '주문생성'),
 ('order_status', 'PAID', '결제완료'),
+('order_status', 'SHIPPING', '배송준비중'),
 ('order_status', 'SHIPPED', '배송중'),
+('order_status', 'DELIVERED', '배송완료'),
 ('order_status', 'COMPLETED', '완료'),
-('order_status', 'CANCELLED', '취소');
+('order_status', 'CANCELLED', '취소'),
+('order_status', 'REFUNDED', '환불'),
+('order_status', 'PAYMENT_PENDING', '결제대기');
 
 -- 6. payment_status (04.Order.sql + 05.Payment.sql + order_payment DEFAULT 'PENDING')
 INSERT INTO meta.meta_enum (enum_type, enum_value, description) VALUES
@@ -49,14 +53,17 @@ INSERT INTO meta.meta_enum (enum_type, enum_value, description) VALUES
 ('payment_status', 'READY', '결제준비'),
 ('payment_status', 'SUCCESS', '결제성공'),
 ('payment_status', 'FAIL', '결제실패'),
-('payment_status', 'CANCEL', '결제취소');
+('payment_status', 'CANCEL', '결제취소'),
+('payment_status', 'REFUNDED', '환불');
 
 -- 7. shipment_status (04.Order.sql + 07.Shipment.sql)
 INSERT INTO meta.meta_enum (enum_type, enum_value, description) VALUES
 ('shipment_status', 'READY', '배송준비'),
+('shipment_status', 'PACKING', '포장중'),
 ('shipment_status', 'SHIPPED', '배송중'),
 ('shipment_status', 'DELIVERED', '배송완료'),
-('shipment_status', 'RETURNED', '반품');
+('shipment_status', 'RETURNED', '반품'),
+('shipment_status', 'CANCELLED', '취소');
 
 -- 8. transaction_type (05.Payment.sql)
 INSERT INTO meta.meta_enum (enum_type, enum_value, description) VALUES

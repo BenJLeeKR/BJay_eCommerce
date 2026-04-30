@@ -15,6 +15,7 @@ from app.routers.shipment import router as shipment_router
 from app.routers.review import router as review_router
 from app.routers.search import router as search_router
 from app.routers.admin import router as admin_router
+from app.routers.enum import router as enum_router
 
 router = APIRouter(tags=["system"])
 
@@ -43,6 +44,7 @@ api_router.include_router(search_router)
 api_router.include_router(admin_router)
 api_router.include_router(auth_router)
 api_router.include_router(role_router)
+api_router.include_router(enum_router)
 
 
 __all__ = [
@@ -63,5 +65,6 @@ __all__ = [
     "admin_router",
     "role_router",
     "auth_router",
+    "enum_router",
     "router",
 ]

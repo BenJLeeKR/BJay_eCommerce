@@ -96,6 +96,10 @@ from app.schemas.upload import (  # noqa: F401 — Phase 2 placeholder
     FileUploadCompleteRequest,
     FileUploadRead,
 )
+from app.schemas.enum import (
+    EnumValueRead,
+    EnumTypeGroup,
+)
 
 __all__ = [
     "APIResponse",
@@ -143,4 +147,6 @@ __all__ = [
     "PresignedUrlResponse",
     "FileUploadCompleteRequest",
     "FileUploadRead",
+    "EnumValueRead",
+    "EnumTypeGroup",
 ]

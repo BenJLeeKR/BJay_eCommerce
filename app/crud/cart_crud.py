@@ -110,7 +110,9 @@ class CartCRUD(CRUDBase[Cart]):
         stmt = (
             select(Cart)
             .options(
-                selectinload(Cart.items).selectinload(CartItem.option_snapshots),
+                selectinload(Cart.items)
+                .and_(CartItem.deleted_at.is_(None))
+                .selectinload(CartItem.option_snapshots),
                 selectinload(Cart.coupons),
             )
             .where(Cart.id == cart_id, Cart.deleted_at.is_(None))
@@ -198,7 +200,9 @@ class CartCRUD(CRUDBase[Cart]):
         stmt = (
             select(Cart)
             .options(
-                selectinload(Cart.items).selectinload(CartItem.option_snapshots),
+                selectinload(Cart.items)
+                .and_(CartItem.deleted_at.is_(None))
+                .selectinload(CartItem.option_snapshots),
                 selectinload(Cart.coupons),
             )
             .where(*base_where)
