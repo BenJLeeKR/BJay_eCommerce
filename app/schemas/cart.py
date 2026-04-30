@@ -35,6 +35,9 @@ class CartItemRead(TimestampSchema):
     id: int
     cart_id: int
     sku_id: int
+    product_id: Optional[int] = None
+    product_name: str = ""
+    thumbnail_image_url: Optional[str] = None
     quantity: int
     unit_price_amount: Decimal
     total_price_amount: Decimal

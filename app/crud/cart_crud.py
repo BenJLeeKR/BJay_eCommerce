@@ -110,14 +110,15 @@ class CartCRUD(CRUDBase[Cart]):
         stmt = (
             select(Cart)
             .options(
-                selectinload(Cart.items)
-                .and_(CartItem.deleted_at.is_(None))
-                .selectinload(CartItem.option_snapshots),
+                selectinload(Cart.items).selectinload(CartItem.option_snapshots),
                 selectinload(Cart.coupons),
             )
             .where(Cart.id == cart_id, Cart.deleted_at.is_(None))
         )
-        return db.execute(stmt).scalar_one_or_none()
+        cart = db.execute(stmt).scalar_one_or_none()
+        if cart:
+            cart.items = [item for item in cart.items if item.deleted_at is None]
+        return cart
 
     def get_by_user_id(
         self,
@@ -200,9 +201,7 @@ class CartCRUD(CRUDBase[Cart]):
         stmt = (
             select(Cart)
             .options(
-                selectinload(Cart.items)
-                .and_(CartItem.deleted_at.is_(None))
-                .selectinload(CartItem.option_snapshots),
+                selectinload(Cart.items).selectinload(CartItem.option_snapshots),
                 selectinload(Cart.coupons),
             )
             .where(*base_where)
@@ -212,6 +211,9 @@ class CartCRUD(CRUDBase[Cart]):
         )
 
         items = list(db.execute(stmt).scalars().unique().all())
+        # Python-side 필터링: soft-delete된 CartItem 제거
+        for cart in items:
+            cart.items = [item for item in cart.items if item.deleted_at is None]
         return items, total_count
 
     def update(

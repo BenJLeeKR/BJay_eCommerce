@@ -4,7 +4,8 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 
 from app.crud import (
     cart_crud,
@@ -93,6 +94,53 @@ def _get_cart_item_or_404(db: Session, cart_item_id: int) -> CartItem:
     return cart_item
 
 
+def _enrich_cart_items_with_product_info(
+    db: Session,
+    items: list[CartItem],
+) -> None:
+    """장바구니 아이템에 product_name, thumbnail_image_url, product_id를 설정한다."""
+    if not items:
+        return
+
+    sku_ids = list(set(item.sku_id for item in items))
+    stmt = (
+        select(SKU)
+        .options(joinedload(SKU.product))
+        .where(SKU.id.in_(sku_ids))
+    )
+    skus = {sku.id: sku for sku in db.execute(stmt).scalars().unique().all()}
+
+    for item in items:
+        sku = skus.get(item.sku_id)
+        if sku and sku.product:
+            object.__setattr__(item, "product_name", sku.product.product_name)
+            object.__setattr__(item, "thumbnail_image_url", sku.product.thumbnail_image_url)
+            object.__setattr__(item, "product_id", sku.product.id)
+        else:
+            object.__setattr__(item, "product_name", "")
+            object.__setattr__(item, "thumbnail_image_url", None)
+            object.__setattr__(item, "product_id", None)
+
+
+def _enrich_cart_with_product_info(db: Session, cart) -> None:
+    """장바구니의 모든 아이템에 product_name, thumbnail_image_url, product_id를 설정한다."""
+    if not cart or not hasattr(cart, "items") or not cart.items:
+        return
+    _enrich_cart_items_with_product_info(db, cart.items)
+
+
+def _enrich_carts_with_product_info(db: Session, carts: list) -> None:
+    """여러 장바구니의 모든 아이템에 product_name, thumbnail_image_url, product_id를 설정한다."""
+    if not carts:
+        return
+    all_items = []
+    for cart in carts:
+        if cart and hasattr(cart, "items") and cart.items:
+            all_items.extend(cart.items)
+    if all_items:
+        _enrich_cart_items_with_product_info(db, all_items)
+
+
 @router.get("/carts", response_model=APIResponse[PagedResult[CartRead]], summary="장바구니 목록 조회")
 def list_carts(
     request: Request,
@@ -117,6 +165,7 @@ def list_carts(
         cart_status=cart_status,
     )
 
+    _enrich_carts_with_product_info(db, carts)
     return APIResponse(
         data=PagedResult[CartRead](
             items=carts,
@@ -132,6 +181,7 @@ def list_carts(
 def get_cart(cart_id: int, db: Session = Depends(get_db)) -> APIResponse[CartRead]:
     """장바구니 상세 정보를 조회한다."""
     cart = _get_cart_or_404(db, cart_id)
+    _enrich_cart_with_product_info(db, cart)
     return APIResponse(data=cart, message="장바구니 상세 정보를 조회했습니다.")
 
 
@@ -155,6 +205,7 @@ def create_cart(
     session_id = get_session_id(request, response)
     cart = cart_crud.create_with_items(db, payload, session_id=session_id)
     created_cart = _get_cart_or_404(db, cart.id)
+    _enrich_cart_with_product_info(db, created_cart)
     return APIResponse(data=created_cart, message="장바구니를 생성했습니다.")
 
 
@@ -171,6 +222,7 @@ def update_cart(
         cart.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     cart_crud.update(db, cart, payload)
     updated_cart = _get_cart_or_404(db, cart_id)
+    _enrich_cart_with_product_info(db, updated_cart)
     return APIResponse(data=updated_cart, message="장바구니를 수정했습니다.")
 
 
@@ -197,6 +249,7 @@ def list_cart_items(
 ) -> APIResponse[list[CartItemRead]]:
     """특정 장바구니에 담긴 상품 목록을 조회한다."""
     cart = _get_cart_or_404(db, cart_id)
+    _enrich_cart_items_with_product_info(db, cart.items)
     return APIResponse(data=cart.items, message="장바구니 상품 목록을 조회했습니다.")
 
 
@@ -224,6 +277,7 @@ def add_cart_item(
 
     cart_item = cart_item_crud.create(db, payload)
     loaded_item = _get_cart_item_or_404(db, cart_item.id)
+    _enrich_cart_items_with_product_info(db, [loaded_item])
     return APIResponse(data=loaded_item, message="장바구니에 상품을 추가했습니다.")
 
 
@@ -244,6 +298,7 @@ def update_cart_item(
         cart_item.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     cart_item_crud.update(db, cart_item, payload)
     updated_item = _get_cart_item_or_404(db, cart_item_id)
+    _enrich_cart_items_with_product_info(db, [updated_item])
     return APIResponse(data=updated_item, message="장바구니 상품을 수정했습니다.")
 
 
