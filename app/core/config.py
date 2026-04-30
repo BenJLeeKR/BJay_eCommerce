@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         "http://localhost:3001",       # 추가 개발 서버
         "http://127.0.0.1:3000",      # IP로 접속하는 경우
         "http://127.0.0.1:3001",
+        "http://146.56.141.120:3000", # 서버 공인 IP로 접속하는 개발 서버
     ]
 
     DB_SCHEMA: str = "ecommerce"
@@ -62,4 +63,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-
