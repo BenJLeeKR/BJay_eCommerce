@@ -274,13 +274,34 @@ def add_cart_item(
             detail=f"이미 처리된 장바구니입니다. (status: {cart.cart_status})",
         )
 
-    # 중복 SKU 검사
+    # 중복 SKU 검사 (ACTIVE 항목 기준)
     existing = cart_item_crud.get_by_cart_and_sku(db, cart_id, payload.sku_id)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="이미 동일한 상품이 장바구니에 존재합니다.",
         )
+
+    # soft-deleted 항목 확인 → 복원 (undelete)
+    soft_deleted_item = db.scalar(
+        select(CartItem)
+        .where(CartItem.cart_id == cart_id)
+        .where(CartItem.sku_id == payload.sku_id)
+        .where(CartItem.deleted_at.isnot(None))
+    )
+    if soft_deleted_item:
+        # soft-deleted 항목 복원 및 수량/가격 업데이트
+        soft_deleted_item.deleted_at = None
+        soft_deleted_item.deleted_by = None
+        soft_deleted_item.quantity = payload.quantity
+        soft_deleted_item.unit_price_amount = payload.unit_price_amount
+        soft_deleted_item.total_price_amount = payload.total_price_amount
+        soft_deleted_item.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(soft_deleted_item)
+        loaded_item = _get_cart_item_or_404(db, soft_deleted_item.id)
+        _enrich_cart_items_with_product_info(db, [loaded_item])
+        return APIResponse(data=loaded_item, message="장바구니에 상품을 추가했습니다.")
 
     cart_item = cart_item_crud.create(db, payload)
     loaded_item = _get_cart_item_or_404(db, cart_item.id)
