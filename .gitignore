@@ -7,5 +7,5 @@ venv/
 *.pyc
 *.pyo
 *.pyd
-.env.local
-
+.env
+.env.example
